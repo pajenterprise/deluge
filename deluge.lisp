@@ -57,13 +57,35 @@
 	(drakma:http-request (make-deluge-uri host port "/json")
 			     :method :post
 			     :content-type "application/json"
+                             ;; :proxy '("localhost" 8888) ;; fiddler
 			     :content json
+                             :keep-alive t
+                             :close nil
 			     :cookie-jar cookie-jar)
       (let ((json (if (string= (cdr (assoc :content-encoding headers)) "gzip")
 		      (unzip-response body)
 		      body)))
 	(format t "~s~%" json)
-	(make-instance 'response :json (yason:parse json) :status status :headers headers)))))
+	(make-instance 'response :json (yason:parse json) :status status :headers headers))))
+  (defun upload-torrent (host port file)
+    (multiple-value-bind (body status headers)
+        (drakma:http-request (make-deluge-uri host port "/upload")
+                             :method :post
+                             ;; :proxy '("localhost" 8888) ;; fiddler
+                             :form-data t
+                             :content-length t ;; force non-chunked transfer
+                             :keep-alive t
+                             :close nil
+                             :parameters
+                             '((|file| . (#p"/users/john/downloads/test.torrent"
+                                          :content-type "application/x-bittorrent"
+                                          :filename "test.torrent")))
+                             :cookie-jar cookie-jar)
+      (let ((json (if (string= (cdr (assoc :content-encoding headers)) "gzip")
+                      (unzip-response body)
+                      body)))
+        (format t "~s~%" json)
+        (make-instance 'response :json (yason:parse json) :status status :headers headers)))))
 
 (defmacro defdeluge (name method args &body json-builder)
   `(defun ,name ,args
@@ -87,7 +109,24 @@
 (defdeluge get-host-status "web.get_host_status" (host-id)
   (yason:encode-array-element host-id))
 
-(defdeluge update-ui "web.update_ui" (params)
+(defdeluge update-ui "web.update_ui" (params &key state tracker)
   (yason:with-array ()
     (dolist (i params) (yason:encode-array-element i)))
-  (yason:with-object ()))
+  (yason:with-object ()
+    (when state
+      (yason:encode-object-element "state" state))
+    (when tracker
+      (yason:encode-object-element "tracker_host" tracker))))
+
+(defdeluge get-torrent-status "web.get_torrent_status" (torrent-id params)
+  (yason:encode-array-element torrent-id)
+  (yason:with-array ()
+    (dolist (i params) (yason:encode-array-element i))))
+
+(defdeluge pause-torrent "core.pause_torrent" (torrent-id)
+  (yason:with-array ()
+    (yason:encode-array-element torrent-id)))
+
+(defdeluge resume-torrent "core.resume_torrent" (torrent-id)
+  (yason:with-array ()
+    (yason:encode-array-element torrent-id)))
