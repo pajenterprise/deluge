@@ -17,15 +17,23 @@
    (status :accessor response-status :initarg :status)
    (headers :accessor response-headers :initarg :headers)))
 
+(defclass upload-response (response) ())
+
 (defmethod print-object ((obj response) out)
   (print-unreadable-object (obj out :type t)
-    (format out "~s" (gethash "result" (response-json obj)))))
+    (format out "~s" (deluge-result obj))))
 
 (defmethod success-p ((resp response))
   (= (response-status resp) 200))
 
+(defmethod deluge-result ((obj upload-response))
+  (gethash "files" (response-json obj) nil))
+
 (defmethod deluge-result ((obj response))
   (gethash "result" (response-json obj) nil))
+
+(defmethod deluge-success-p ((obj upload-response))
+  (gethash "success" (response-json obj) nil))
 
 (defmethod deluge-success-p ((obj response))
   (not (gethash "error" (response-json obj) t)))
@@ -51,41 +59,35 @@
   (make-instance 'puri:uri :host (or (puri:uri-host (puri:uri host)) (puri:uri-path (puri:uri host)))
 		 :port port :path path :scheme :http))
 
+(defmacro defrequest (name (path obj content) &body args)
+  `(defun ,name (host port ,content)
+     (multiple-value-bind (body status headers)
+         (drakma:http-request (make-deluge-uri host port ,path)
+                              :method :post
+                              :proxy '("localhost" 8888) ;; fiddler
+                              :keep-alive t
+                              :close nil
+                              ,@args)
+       (let ((json (if (string= (cdr (assoc :content-encoding headers)) "gzip")
+                       (unzip-response body)
+                       body)))
+         (format t "~s~%" json)
+         (make-instance ',obj :json (yason:parse json) :status status :headers headers)))))
+
 (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  (defun post-request (host port json)
-    (multiple-value-bind (body status headers)
-	(drakma:http-request (make-deluge-uri host port "/json")
-			     :method :post
-			     :content-type "application/json"
-                             ;; :proxy '("localhost" 8888) ;; fiddler
-			     :content json
-                             :keep-alive t
-                             :close nil
-			     :cookie-jar cookie-jar)
-      (let ((json (if (string= (cdr (assoc :content-encoding headers)) "gzip")
-		      (unzip-response body)
-		      body)))
-	(format t "~s~%" json)
-	(make-instance 'response :json (yason:parse json) :status status :headers headers))))
-  (defun upload-torrent (host port file)
-    (multiple-value-bind (body status headers)
-        (drakma:http-request (make-deluge-uri host port "/upload")
-                             :method :post
-                             ;; :proxy '("localhost" 8888) ;; fiddler
-                             :form-data t
-                             :content-length t ;; force non-chunked transfer
-                             :keep-alive t
-                             :close nil
-                             :parameters
-                             '((|file| . (#p"/users/john/downloads/test.torrent"
-                                          :content-type "application/x-bittorrent"
-                                          :filename "test.torrent")))
-                             :cookie-jar cookie-jar)
-      (let ((json (if (string= (cdr (assoc :content-encoding headers)) "gzip")
-                      (unzip-response body)
-                      body)))
-        (format t "~s~%" json)
-        (make-instance 'response :json (yason:parse json) :status status :headers headers)))))
+  (defrequest post-request ("/json" response json)
+    :content-type "application/json"
+    :content json
+    :cookie-jar cookie-jar)
+  (defrequest upload-torrent ("/upload" upload-response file)
+    :form-data t
+    :parameters
+    (list
+     (cons '|file| ;; must be |file| so that it's printed as lowercase
+           (list file
+                 :content-type "application/x-bittorrent"
+                 :filename (file-namestring file))))
+    :cookie-jar cookie-jar))
 
 (defmacro defdeluge (name method args &body json-builder)
   `(defun ,name ,args
