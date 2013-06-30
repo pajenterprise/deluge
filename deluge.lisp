@@ -2,49 +2,12 @@
 
 (in-package #:deluge)
 
-;;; "deluge" goes here. Hacks and glory await!
-
-(setf drakma:*header-stream* *standard-output*)
-(setf yason:*parse-json-booleans-as-symbols* t)
-
-(defparameter *host* "localhost")
-(defparameter *port* 8112)
-
-(defun set-host (host &optional (port 8112))
-  (setf *host* host *port* port))
-
-(defclass response ()
-  ((json :accessor response-json :initarg :json)
-   (status :accessor response-status :initarg :status)
-   (headers :accessor response-headers :initarg :headers)))
-
-(defclass upload-response (response) ())
-
-(defmethod print-object ((obj response) out)
-  (print-unreadable-object (obj out :type t)
-    (format out "~s" (deluge-result obj))))
-
-(defmethod success-p ((resp response))
-  (= (response-status resp) 200))
-
-(defmethod deluge-result ((obj upload-response))
-  (gethash "files" (response-json obj) nil))
-
-(defmethod deluge-result ((obj response))
-  (gethash "result" (response-json obj) nil))
-
-(defmethod deluge-success-p ((obj upload-response))
-  (gethash "success" (response-json obj) nil))
-
-(defmethod deluge-success-p ((obj response))
-  (not (gethash "error" (response-json obj) t)))
-
-(defun unzip-response (response)
-  (coerce (map 'list #'code-char (gzip-stream:gunzip-sequence response)) 'string))
+;; (setf yason:*parse-json-booleans-as-symbols* t)
 
 (defparameter *id* 0)
 
 (defmacro with-deluge-json ((method) &body body)
+  "Takes care of the boilerplate JSON of a deluge request"
   `(let ((json-string
           (yason:with-output-to-string* ()
             (yason:with-object ()
@@ -56,43 +19,6 @@
      (format t "~a~%" json-string)
      json-string))
 
-(defun make-deluge-uri (host port path)
-  (make-instance 'puri:uri :host (or (puri:uri-host (puri:uri host)) (puri:uri-path (puri:uri host)))
-		 :port port :path path :scheme :http))
-
-(defmacro defrequest (name (path obj content) &body args)
-  `(defun ,name (host port ,content)
-     (multiple-value-bind (body status headers)
-         (drakma:http-request (make-deluge-uri host port ,path)
-                              :method :post
-                              :proxy '("localhost" 8888) ;; fiddler
-                              :keep-alive t
-                              :close nil
-                              ,@args)
-       (let ((json (if (string= (cdr (assoc :content-encoding headers)) "gzip")
-                       (unzip-response body)
-                       body)))
-         (format t "~s~%" json)
-         (make-instance ',obj
-                        :json (and (= status 200) (yason:parse json))
-                        :status status
-                        :headers headers)))))
-
-(let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  (defrequest post-request ("/json" response json)
-    :content-type "application/json"
-    :content json
-    :cookie-jar cookie-jar)
-  (defrequest upload-torrent ("/upload" upload-response file)
-    :form-data t
-    :parameters
-    (list
-     (cons '|file| ;; must be |file| so that it's printed as lowercase
-           (list file
-                 :content-type "application/x-bittorrent"
-                 :filename (file-namestring file))))
-    :cookie-jar cookie-jar))
-
 (defmacro defdeluge (name method args &body json-builder)
   `(defun ,name ,args
      (deluge-result 
@@ -100,10 +26,18 @@
                     (with-deluge-json (,method)
                       ,@json-builder)))))
 
+;;; *********************
+;;; * auth functions
+;;; *********************
+
 (defdeluge login "auth.login" (pass)
   (yason:encode-array-element pass))
 
 (defdeluge check-session "auth.check_session" ())
+
+;;; *********************
+;;; * web functions
+;;; *********************
 
 (defdeluge connect "web.connect" (host-id)
   (yason:encode-array-element host-id))
@@ -119,15 +53,36 @@
   (yason:with-array ()
     (dolist (i params) (yason:encode-array-element i)))
   (yason:with-object ()
+    ;; TODO State and tracker are mutually exclusive.
     (when state
       (yason:encode-object-element "state" state))
     (when tracker
       (yason:encode-object-element "tracker_host" tracker))))
 
+(defdeluge get-torrent-info "web.get_torrent_info" (path)
+  (yason:encode-array-element path))
+
 (defdeluge get-torrent-status "web.get_torrent_status" (torrent-id &rest params)
   (yason:encode-array-element torrent-id)
   (yason:with-array ()
     (dolist (i params) (yason:encode-array-element i))))
+
+(defdeluge add-torrent "web.add_torrents" (path options)
+  (yason:with-array ()
+    (yason:with-object ()
+      (yason:encode-object-element "path" path)
+      (yason:encode-object-element "options" options))))
+
+
+;;; *********************
+;;; * core functions
+;;; *********************
+
+(defparameter *default-config-values*
+  '("add_paused" "compact_allocation" "download_location"
+    "max_connections_per_torrent" "max_download_speed_per_torrent"
+    "move_completed" "move_completed_path" "max_upload_slots_per_torrent"
+    "max_upload_speed_per_torrent" "prioritize_first_last_pieces"))
 
 (defdeluge pause-torrent "core.pause_torrent" (torrent-id)
   (yason:with-array ()
@@ -141,19 +96,26 @@
   (yason:encode-array-element torrent-id)
   (yason:encode-array-element (or (and with-data 'yason:true) 'yason:false)))
 
-(defparameter *default-config-values*
-  '("add_paused" "compact_allocation" "download_location"
-    "max_connections_per_torrent" "max_download_speed_per_torrent"
-    "move_completed" "move_completed_path" "max_upload_slots_per_torrent"
-    "max_upload_speed_per_torrent" "prioritize_first_last_pieces"))
-
 (defdeluge get-config-values "core.get_config_values" (&rest params)
   (yason:with-array ()
     (let ((vals (or params *default-config-values*)))
       (dolist (i vals) (yason:encode-array-element i)))))
 
-(defdeluge add-torrent "web.add_torrents" (path options)
-  (yason:with-array ()
-    (yason:with-object ()
-      (yason:encode-object-element "path" path)
-      (yason:encode-object-element "options" options))))
+;;; *************************
+;;; * convenience functions
+;;; *************************
+
+(defun torrent+ (path)
+  (let ((response (upload-torrent *host* *port* path)))
+    (when (not (and (success-p response) (deluge-success-p response)))
+      (error "Upload failed!"))
+    (let ((config (get-config-values))
+          (file (car (deluge-result response))))
+      ;; The length of the priority list must equal the
+      ;; number of paths specified. For now, since we're
+      ;; only uploading one file at a time, we can hard-code
+      ;; this.
+      (setf (gethash "file_priorities" config) '(1))
+      (add-torrent file config))))
+
+

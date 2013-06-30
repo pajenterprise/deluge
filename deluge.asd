@@ -10,5 +10,7 @@
 	       #:yason
 	       #:puri)
   :components ((:file "package")
+               (:file "response")
+               (:file "request")
                (:file "deluge")))
 
