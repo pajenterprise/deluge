@@ -5,6 +5,7 @@
 ;;; "deluge" goes here. Hacks and glory await!
 
 (setf drakma:*header-stream* *standard-output*)
+(setf yason:*parse-json-booleans-as-symbols* t)
 
 (defparameter *host* "localhost")
 (defparameter *port* 8112)
@@ -72,7 +73,10 @@
                        (unzip-response body)
                        body)))
          (format t "~s~%" json)
-         (make-instance ',obj :json (yason:parse json) :status status :headers headers)))))
+         (make-instance ',obj
+                        :json (and (= status 200) (yason:parse json))
+                        :status status
+                        :headers headers)))))
 
 (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
   (defrequest post-request ("/json" response json)
@@ -111,7 +115,7 @@
 (defdeluge get-host-status "web.get_host_status" (host-id)
   (yason:encode-array-element host-id))
 
-(defdeluge update-ui "web.update_ui" (params &key state tracker)
+(defdeluge update-ui "web.update_ui" (state tracker &rest params)
   (yason:with-array ()
     (dolist (i params) (yason:encode-array-element i)))
   (yason:with-object ()
@@ -120,7 +124,7 @@
     (when tracker
       (yason:encode-object-element "tracker_host" tracker))))
 
-(defdeluge get-torrent-status "web.get_torrent_status" (torrent-id params)
+(defdeluge get-torrent-status "web.get_torrent_status" (torrent-id &rest params)
   (yason:encode-array-element torrent-id)
   (yason:with-array ()
     (dolist (i params) (yason:encode-array-element i))))
@@ -132,3 +136,24 @@
 (defdeluge resume-torrent "core.resume_torrent" (torrent-id)
   (yason:with-array ()
     (yason:encode-array-element torrent-id)))
+
+(defdeluge remove-torrent "core.remove_torrent" (torrent-id &optional with-data)
+  (yason:encode-array-element torrent-id)
+  (yason:encode-array-element (or (and with-data 'yason:true) 'yason:false)))
+
+(defparameter *default-config-values*
+  '("add_paused" "compact_allocation" "download_location"
+    "max_connections_per_torrent" "max_download_speed_per_torrent"
+    "move_completed" "move_completed_path" "max_upload_slots_per_torrent"
+    "max_upload_speed_per_torrent" "prioritize_first_last_pieces"))
+
+(defdeluge get-config-values "core.get_config_values" (&rest params)
+  (yason:with-array ()
+    (let ((vals (or params *default-config-values*)))
+      (dolist (i vals) (yason:encode-array-element i)))))
+
+(defdeluge add-torrent "web.add_torrents" (path options)
+  (yason:with-array ()
+    (yason:with-object ()
+      (yason:encode-object-element "path" path)
+      (yason:encode-object-element "options" options))))
