@@ -29,7 +29,7 @@
      (multiple-value-bind (body status headers)
          (drakma:http-request (make-deluge-uri host port ,path)
                               :method :post
-                              :proxy '("localhost" 8888) ;; fiddler
+                              ;; :proxy '("localhost" 8888) ;; fiddler
                               :keep-alive t
                               :close nil
                               ,@args)
@@ -51,7 +51,7 @@
     :form-data t
     :parameters
     (list
-     (cons '|file| ;; must be |file| so that it's printed as lowercase
+     (cons :|file| ;; must be |file| so that it's printed as lowercase
            (list file
                  :content-type "application/x-bittorrent"
                  :filename (file-namestring file))))

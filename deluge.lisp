@@ -2,8 +2,6 @@
 
 (in-package #:deluge)
 
-;; (setf yason:*parse-json-booleans-as-symbols* t)
-
 (defparameter *id* 0)
 
 (defmacro with-deluge-json ((method) &body body)
@@ -20,6 +18,8 @@
      json-string))
 
 (defmacro defdeluge (name method args &body json-builder)
+  "Defines a function that returns the result of posting some
+   deluge JSON"
   `(defun ,name ,args
      (deluge-result 
       (post-request *host* *port*
@@ -53,11 +53,10 @@
   (yason:with-array ()
     (dolist (i params) (yason:encode-array-element i)))
   (yason:with-object ()
-    ;; TODO State and tracker are mutually exclusive.
-    (when state
-      (yason:encode-object-element "state" state))
-    (when tracker
-      (yason:encode-object-element "tracker_host" tracker))))
+    (cond
+      ((and state tracker) (error ":state and :tracker are mutually exclusive"))
+      (state (yason:encode-object-element "state" state))
+      (tracker (yason:encode-object-element "tracker_host" tracker)))))
 
 (defdeluge get-torrent-info "web.get_torrent_info" (path)
   (yason:encode-array-element path))
@@ -72,7 +71,6 @@
     (yason:with-object ()
       (yason:encode-object-element "path" path)
       (yason:encode-object-element "options" options))))
-
 
 ;;; *********************
 ;;; * core functions
@@ -106,6 +104,9 @@
 ;;; *************************
 
 (defun torrent+ (path)
+  (when (not (pathnamep path))
+    (error (with-output-to-string (s)
+             (format s "The value ~a is not of type PATHNAME" path))))
   (let ((response (upload-torrent *host* *port* path)))
     (when (not (and (success-p response) (deluge-success-p response)))
       (error "Upload failed!"))
