@@ -76,12 +76,6 @@
 ;;; * core functions
 ;;; *********************
 
-(defparameter *default-config-values*
-  '("add_paused" "compact_allocation" "download_location"
-    "max_connections_per_torrent" "max_download_speed_per_torrent"
-    "move_completed" "move_completed_path" "max_upload_slots_per_torrent"
-    "max_upload_speed_per_torrent" "prioritize_first_last_pieces"))
-
 (defdeluge pause-torrent "core.pause_torrent" (torrent-id)
   (yason:with-array ()
     (yason:encode-array-element torrent-id)))
@@ -96,27 +90,4 @@
 
 (defdeluge get-config-values "core.get_config_values" (&rest params)
   (yason:with-array ()
-    (let ((vals (or params *default-config-values*)))
-      (dolist (i vals) (yason:encode-array-element i)))))
-
-;;; *************************
-;;; * convenience functions
-;;; *************************
-
-(defun torrent+ (path)
-  (when (not (pathnamep path))
-    (error (with-output-to-string (s)
-             (format s "The value ~a is not of type PATHNAME" path))))
-  (let ((response (upload-torrent *host* *port* path)))
-    (when (not (and (success-p response) (deluge-success-p response)))
-      (error "Upload failed!"))
-    (let ((config (get-config-values))
-          (file (car (deluge-result response))))
-      ;; The length of the priority list must equal the
-      ;; number of paths specified. For now, since we're
-      ;; only uploading one file at a time, we can hard-code
-      ;; this.
-      (setf (gethash "file_priorities" config) '(1))
-      (add-torrent file config))))
-
-
+    (dolist (i params) (yason:encode-array-element i))))

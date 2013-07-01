@@ -2,7 +2,7 @@
 
 (asdf:defsystem #:deluge
   :serial t
-  :description "Describe deluge here"
+  :description "CL interface to the deluge torrent client webui"
   :author "John Wood <j@jdtw.us>"
   :license "Specify license here"
   :depends-on (#:drakma
@@ -12,5 +12,7 @@
   :components ((:file "package")
                (:file "response")
                (:file "request")
-               (:file "deluge")))
+               (:file "util")
+               (:file "deluge")
+               (:file "client")))
 
