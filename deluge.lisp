@@ -14,7 +14,7 @@
                 (yason:with-array ()
                   ,@body))
               (yason:encode-object-element "id" (incf *id*))))))
-     (format t "~a~%" json-string)
+     ;; (format t "~a~%" json-string)
      json-string))
 
 (defmacro defdeluge (name method args &body json-builder)
