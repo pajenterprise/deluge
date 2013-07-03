@@ -17,6 +17,5 @@
            #:resume-torrent
            #:remove-torrent
            #:get-config-values
-           #:upload-torrent
-           #:torrent+))
+           #:upload-torrent))
 
