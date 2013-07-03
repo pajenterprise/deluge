@@ -4,7 +4,7 @@
   :serial t
   :description "CL interface to the Deluge torrent client WebUI"
   :author "John Wood <j@jdtw.us>"
-  :license "Specify license here"
+  :license "Simplified BSD"
   :depends-on (#:drakma
 	       #:gzip-stream
 	       #:yason
