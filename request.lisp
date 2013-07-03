@@ -3,7 +3,7 @@
 (in-package #:deluge)
 
 ;; for debugging:
-(setf drakma:*header-stream* *standard-output*)
+;; (setf drakma:*header-stream* *standard-output*)
 
 (defparameter *host* "localhost")
 (defparameter *port* 8112)
@@ -36,7 +36,7 @@
        (let ((json (if (string= (cdr (assoc :content-encoding headers)) "gzip")
                        (unzip-response body)
                        body)))
-         (format t "~s~%" json)
+         ;; (format t "~s~%" json)
          (make-instance ',obj
                         :json (and (= status 200) (yason:parse json))
                         :status status

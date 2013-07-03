@@ -17,5 +17,8 @@
            #:resume-torrent
            #:remove-torrent
            #:get-config-values
-           #:upload-torrent))
+           #:upload-torrent
+           #:deluge-success-p
+           #:success-p
+           #:deluge-result))
 
