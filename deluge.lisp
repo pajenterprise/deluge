@@ -22,9 +22,9 @@
    deluge JSON"
   `(defun ,name ,args
      (deluge-result 
-      (post-request *host* *port*
-                    (with-deluge-json (,method)
-                      ,@json-builder)))))
+      (post-request
+       (with-deluge-json (,method)
+         ,@json-builder)))))
 
 ;;; *********************
 ;;; * auth functions

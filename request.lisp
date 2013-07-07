@@ -25,7 +25,7 @@
         (gzip-stream:gunzip-sequence response)) 'string))
 
 (defmacro defrequest (name (path obj content) &body args)
-  `(defun ,name (host port ,content)
+  `(defun ,name (,content &key (host *host*) (port *port*))
      (multiple-value-bind (body status headers)
          (drakma:http-request (make-deluge-uri host port ,path)
                               :method :post
